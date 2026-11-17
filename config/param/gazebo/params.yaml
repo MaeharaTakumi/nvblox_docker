@@ -80,8 +80,10 @@ nvblox_node:
     ground_plane_visualization_attachment_frame_id: base_footprint            # 地面の平面の表示の中心（既定 base_link）
     ground_plane_visualization_side_length: 10.0                              # 同じく一辺 [m]（既定 10.0）
     layer_streamer_bandwidth_limit_mbps: 30.0      # 層の配信の帯域の上限 [Mbps]（既定 30.0）
-    layer_visualization_exclusion_height_m: 2.0    # 層の表示から除く高さ [m]（既定 2.0）
-    layer_visualization_exclusion_radius_m: 5.0    # 層の表示から除く半径 [m]（既定 5.0）
+    # map の z がこれより上のボクセルを表示しない（メッシュも）。負で無効。Gazebo の地図は床が z ≈ 12.3 m で、既定 2.0 では全部消える（dev_log.md の 3）
+    layer_visualization_exclusion_height_m: -1.0   # 既定 2.0
+    # ロボットからこれより遠いボクセルを表示しない（メッシュも）。負で無効。既定 5.0 では 5 m より外が表示されない（dev_log.md の 3）
+    layer_visualization_exclusion_radius_m: -1.0   # 既定 5.0
     layer_visualization_min_tsdf_weight: 0.10000000149011612   # 層の表示に使う TSDF の重みの下限（既定 0.1）
     layer_visualization_undo_gamma_correction: false           # 色のガンマ補正を戻す（既定 false）
     max_back_projection_distance: 5.0              # 深度の逆投影の表示の距離の上限 [m]（既定 5.0）

@@ -36,7 +36,7 @@
   - Gazebo の VLP-16（`wheelchair_2.xacro`：16 本・上下 ±15°・水平 `samples="440"`・10 Hz・`organize_cloud` false）に合わせ、
     `lidar_width` を 1800 → 440。`lidar_height` 16・`lidar_vertical_fov_rad` 0.5236 は既定のまま合っている。
   - 4.6 には `use_lidar_motion_compensation`（既定 true）・`pointcloud2_timestamps_are_relative`（既定 true）がある。
-    Gazebo の点群の `time` は全点 0.0 なので、補正は実質かからない（既定のまま）。
+    Gazebo の点群の `time` は全点 0.0 なので、補正は実質かからない（既定のままにしたが、起動すると落ちたので項目 3 で false にした）。
   - 起動のたびに `Requested weighting function: "kInverseSquareWeight" not recognized. Defaulting to: kInverseSquareWeight`・
     `workspace bounds type: "kUnbounded" not recognized` の WARN が出る。yaml を渡さず既定値で起動しても同じなので、nvblox 側の表示の癖（動作は既定どおり）。
 
@@ -74,3 +74,40 @@
     影響は段階 2 の走行で見る）。
 
 ![段階 1：メッシュが出ない（既定の表示の除外）](dev_log_images/stage1_rviz_no_mesh.png)
+
+### 4. 表示の除外を無効にする（ユーザー確認済み）
+
+- `layer_visualization_exclusion_height_m`・`layer_visualization_exclusion_radius_m` を -1（無効）にした（項目 3 の表）。
+  `use_lidar_motion_compensation: false`（項目 3）もユーザーに確認した。
+
+### 5. 段階 2：テスト走行（Gazebo、slalom、案 A）
+
+- 目的：走行中にメッシュが積み上がり、ロボットから離れた所も残ることを確かめる。GPU メモリを記録する。
+- やったこと：
+  - `drive`（localization_tools の `run_test.sh`）は Gazebo では**推定を自分で起動する**（推定が動いていると「localization processes are still running」で止まる）。
+    起動の順（Gazebo → test → nvblox）を保つため：Gazebo を起動 → `test` の中で `drive gazebo slalom check/nvblox_slalom map_path:=/root/ros2_ws/map/SC10_4_0.05.pcd`
+    （`docker exec -d`）→ 「start recording and localization」が出て 8 s 後に nvblox（`rviz:=true`）→ 走り出す（推定の起動から 25 s 後）。
+  - 走行中、1 s ごとに `nvidia-smi --query-compute-apps` で nvblox_node の GPU メモリを取り、RViz の窓を `import -window` で撮った。
+- 結果：
+  - 走行：forward 1.10 s・1.01 m、slalom 12.47 s・7.52 m。録画は localization の `docker/data/bags/gazebo/check/nvblox_slalom`（42.9 s、75.3 MB）。
+    走り終えると `drive` が推定を止める。
+  - **メッシュは走行に沿って積み上がる**（下図。左から走る前・走行中・走行後 5 s。灰色がメッシュ、白は今の点群）。床と壁が 0.05 m のボクセルで埋まる。
+  - **nvblox_node の GPU メモリ**：起動後 1302 MiB → 走行の開始 1366 MiB → 走行の終わり 1818 MiB（走行中 1 s ごとに 1366・1430・1462・1558・1590・1622・1654・1686・1786・1818 MiB）。
+    GPU の全体 16303 MiB。
+  - **nvblox_node のログ**：TF 待ち・入力の取りこぼしの警告は出なかった（起動時の「Lookup transform failed for frame base_footprint」が 1 回だけ。推定が TF を出す前）。
+    「Last view not set for sensor type. Decaying all voxels」の INFO が 5 Hz で出続ける（約 300 s で 1509 回）。
+  - **走行後、地図が消えた**：走行後 5 s の RViz にはメッシュがあったが、約 2 分後には RViz からも消え（下の 2 枚目）、`~/mesh` を新しく購読して
+    地図全体を受け直しても頂点のあるブロックは 0。RViz は削除（空のブロック）を受け取るまでブロックを持ち続けるので、nvblox が地図を消したと考えられる。
+    static_tsdf でも TSDF の減衰（`decay_tsdf_rate_hz` 5 Hz、`tsdf_decay_factor` 0.95、`tsdf_decayed_weight_threshold` 0.001 で
+    ブロックを解放）がかかり、LiDAR では「最後の視野」（減衰から除く範囲）が設定されないので全部のボクセルが減衰する、と読める。
+    重みの上限 5 から 0.001 までは 0.95 を 166 回（5 Hz で約 33 s）。見えなくなった所は数十秒で消える計算で、完了条件「離れた所も消えずに残る」を満たさない。
+    （推定が止まると TF が無くなり点群を積めないので、走行後は全部が「見えない所」になる。）
+  - `drive` のログに「sequence size exceeds remaining buffer」（Fast DDS がメッセージを読めないときの表示）が 2 回出た。これまでの drive のログには無い。
+    Jazzy のノードが加わったためかもしれないが、原因は調べていない。走行と録画は正常に終わった。
+
+![slalom で積み上がるメッシュ（走る前・走行中・走行後 5 s）](dev_log_images/stage2_slalom.png)
+
+RViz の画面全体（走行後 5 s）と、約 2 分後（メッシュが消えた）：
+
+![RViz の画面（走行後 5 s）](dev_log_images/stage2_rviz_window.png)
+![RViz の画面（走行後 約 2 分）](dev_log_images/stage2_after_stop.png)
