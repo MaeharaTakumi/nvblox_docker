@@ -1,0 +1,29 @@
+# terminalのリロード
+alias reload='exec $SHELL -l'
+
+#=========================nvblox=============================
+# 設定（launch・param・rviz）の場所。ホストの Docker/nvblox/config を割り当てたもの
+NVBLOX_CONFIG=/root/nvblox/config
+
+# 環境（config/param/<env>/params.yaml）があるか確かめる。入力：環境の名前。出力：無ければエラーを表示して 1
+nvblox_env_check() {
+  if [ ! -f "${NVBLOX_CONFIG}/param/$1/params.yaml" ]; then
+    echo "Error: no environment \"$1\". Available: $(cd "${NVBLOX_CONFIG}/param" && ls -d */ | tr -d / | tr '\n' ' ')"
+    return 1
+  fi
+}
+
+# nvblox で地図を作って表示する（nvblox_node と rviz2）。nvblox [env（既定 gazebo）] [rviz（true（既定）|false）]
+nvblox() {
+  local env=${1:-gazebo}
+  nvblox_env_check "$env" || return 1
+  ros2 launch "${NVBLOX_CONFIG}/nvblox.launch.py" env:="$env" rviz:="${2:-true}"
+}
+
+# params変更：環境の params.yaml（nvblox_node・rviz2 の節）を開く。nvblox_params [env（既定 gazebo）]
+# ホストの config/ と同じファイルなので、保存して nvblox を起動し直せば反映される（ビルドは要らない）
+nvblox_params() {
+  local env=${1:-gazebo}
+  nvblox_env_check "$env" || return 1
+  code "${NVBLOX_CONFIG}/param/${env}/params.yaml"
+}

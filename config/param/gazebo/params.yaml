@@ -1,0 +1,218 @@
+# 環境 gazebo（ros2 launch /root/nvblox/config/nvblox.launch.py env:=gazebo）
+# nvblox.launch.py がこのファイルを nvblox_node と rviz2 の両方に渡す。どの項目も書いておく（書いていない項目をコードの既定値で動かさない）。
+# 項目と既定値（コメントの「既定」）は nvblox_ros 4.6.0（ros-jazzy-isaac-ros-nvblox）の nvblox_node を起動し、ros2 param dump・describe で確かめたもの。
+# 実機では param/<色>/params.yaml を足す（use_sim_time: false、base_link のフレーム、LiDAR の幅など）。
+# 調整はしていない。既定から変えたのは「（既定 …）」と書いた項目だけ。
+
+nvblox_node:
+  ros__parameters:
+    use_sim_time: true                  # Gazebo の /clock に従う（既定 false）
+
+    # ---------- フレームと姿勢 ----------
+    global_frame: map                   # 地図の基準。今の TF は EKF の map -> base_footprint（既定 odom）
+    use_tf_transforms: true             # センサの姿勢を TF から引く（既定 true）
+    use_topic_transforms: false         # 姿勢を transform・pose のトピックから受ける（既定 false）
+    pose_frame: base_footprint          # use_topic_transforms のときの車体のフレーム（既定 base_link）
+
+    # ---------- 入力 ----------
+    use_lidar: true                     # 点群（pointcloud。launch が /velodyne_points に付け替える）を使う（既定 true）
+    use_depth: false                    # 深度画像を使う（既定 true）
+    use_color: false                    # カラー画像を使う（既定 true）
+    use_segmentation: false             # 人などの切り出しを使う（既定 false）
+    num_cameras: 1                      # カメラの数（use_depth・use_color のとき。既定 1）
+    input_qos: SYSTEM_DEFAULT           # 入力の購読の QoS（SYSTEM_DEFAULT は reliable）。/velodyne_points の配信は RELIABLE（段階 2 で確認）（既定 SYSTEM_DEFAULT）
+    input_qos_depth: 0                  # 入力の購読の履歴の深さ（0 なら QoS の既定。既定 0）
+    maximum_input_queue_length: 10      # 処理を待つ入力の数の上限（溢れたら古いものを捨てる。既定 10）
+
+    # ---------- LiDAR（点群を幅 × 高さの深度画像に投影して積み上げる） ----------
+    # Gazebo の VLP-16（velodyne_description の VLP-16.urdf.xacro と wheelchair_2.xacro）：
+    # 16 本（lasers）、上下 ±15°（0.5236 rad）、水平 360° を 440 点（samples="440"）、10 Hz、organize_cloud false
+    lidar_width: 440                    # 水平の点の数。Gazebo の samples に合わせる（既定 1800 は実機の VLP-16 向け）
+    lidar_height: 16                    # 本数（既定 16）
+    lidar_vertical_fov_rad: 0.5235987901687622   # 上下の視野 30°（既定 0.5236）
+    lidar_min_valid_range_m: 0.10000000149011612 # これより近い点は使わない [m]（既定 0.1）
+    use_non_equal_vertical_fov_lidar_params: false  # 上下の視野が非対称の LiDAR（下の 2 つを使う。既定 false）
+    max_angle_above_zero_elevation_rad: 0.2617993950843811  # 非対称のときの上側の角度（既定 0.2618）
+    min_angle_below_zero_elevation_rad: 0.3490658402442932  # 非対称のときの下側の角度（既定 0.3491）
+    # 点ごとの時刻で歪みを補正する。Gazebo の点群の time は全点 0.0（header の時刻からの相対）なので、実質補正しない
+    use_lidar_motion_compensation: true # 既定 true
+    pointcloud2_timestamps_are_relative: true   # 点ごとの時刻を header からの相対とみなす（既定 true）
+
+    # ---------- 地図 ----------
+    mapping_type: static_tsdf           # 静的な TSDF（メッシュを出す）（既定 static_tsdf）
+    voxel_size: 0.05000000074505806     # ボクセルの大きさ [m]（既定 0.05）
+    esdf_mode: 2d                       # ESDF（距離の地図）を 2D の断面で作る（既定 2d）
+    after_shutdown_map_save_path: ''    # 終了時に地図を保存する場所（空なら保存しない。既定 ''）
+
+    # ---------- 地図の消去（ロボットから離れた所を消す） ----------
+    map_clearing_frame_id: base_footprint       # 消去の中心（既定 base_link）
+    map_clearing_radius_m: -1.0                 # 0 以下で消去しない。既定 5.0 だとロボットから 5 m より外の地図が消える
+    clear_map_outside_radius_rate_hz: 1.0       # 消去の周期 [Hz]（既定 1.0）
+
+    # ---------- 周期 ----------
+    tick_period_ms: 10                  # 処理の刻み [ms]（既定 10）
+    integrate_lidar_rate_hz: 40.0       # 点群を積み上げる周期の上限 [Hz]（既定 40.0）
+    integrate_depth_rate_hz: 40.0       # 深度画像（既定 40.0）
+    integrate_color_rate_hz: 5.0        # カラー画像（既定 5.0）
+    decay_tsdf_rate_hz: 5.0             # TSDF の減衰（static_tsdf では使わない。既定 5.0）
+    decay_dynamic_occupancy_rate_hz: 10.0       # 動的な占有の減衰（既定 10.0）
+    update_mesh_rate_hz: 5.0            # メッシュの更新 [Hz]（既定 5.0）
+    update_esdf_rate_hz: 5.0            # ESDF の更新 [Hz]（既定 5.0）
+    publish_layer_rate_hz: 10.0         # 層の点群の配信 [Hz]（既定 10.0）
+    publish_debug_vis_rate_hz: 2.0      # デバッグ表示の配信 [Hz]（既定 2.0）
+    print_statistics_on_console_period_ms: 10000   # 統計をログに出す周期 [ms]（既定 10000）
+
+    # ---------- ESDF・距離の地図 ----------
+    esdf_and_gradients_unobserved_value: -1000.0   # 未観測の ESDF の値（既定 -1000.0）
+    distance_map_unknown_value_optimistic: 1000.0  # 楽観的な距離の地図の未知の値（既定 1000.0）
+    distance_map_unknown_value_pessimistic: -1000.0  # 悲観的な距離の地図の未知の値（既定 -1000.0）
+    output_pessimistic_distance_map: true          # 悲観的な距離の地図も出す（既定 true）
+    publish_esdf_distance_slice: true              # ESDF の断面を出す（既定 true）
+
+    # ---------- 表示・配信 ----------
+    esdf_slice_bounds_visualization_attachment_frame_id: base_footprint       # ESDF の断面の枠の中心（既定 base_link）
+    esdf_slice_bounds_visualization_side_length: 10.0                         # 同じく一辺 [m]（既定 10.0）
+    workspace_height_bounds_visualization_attachment_frame_id: base_footprint # 作業範囲の高さの枠の中心（既定 base_link）
+    workspace_height_bounds_visualization_side_length: 10.0                   # 同じく一辺 [m]（既定 10.0）
+    ground_plane_visualization_attachment_frame_id: base_footprint            # 地面の平面の表示の中心（既定 base_link）
+    ground_plane_visualization_side_length: 10.0                              # 同じく一辺 [m]（既定 10.0）
+    layer_streamer_bandwidth_limit_mbps: 30.0      # 層の配信の帯域の上限 [Mbps]（既定 30.0）
+    layer_visualization_exclusion_height_m: 2.0    # 層の表示から除く高さ [m]（既定 2.0）
+    layer_visualization_exclusion_radius_m: 5.0    # 層の表示から除く半径 [m]（既定 5.0）
+    layer_visualization_min_tsdf_weight: 0.10000000149011612   # 層の表示に使う TSDF の重みの下限（既定 0.1）
+    layer_visualization_undo_gamma_correction: false           # 色のガンマ補正を戻す（既定 false）
+    max_back_projection_distance: 5.0              # 深度の逆投影の表示の距離の上限 [m]（既定 5.0）
+    back_projection_subsampling: 1                 # 同じく間引き（既定 1）
+
+    # ---------- その他 ----------
+    cuda_stream_type: 1                 # CUDA のストリームの種類（既定 1）
+    start_type_description_service: true          # 型の説明のサービスを出す（Jazzy の rclcpp の項目。既定 true）
+    print_delays_to_console: false      # 遅れをログに出す（既定 false）
+    print_queue_drops_to_console: false # 入力の取りこぼしをログに出す（既定 false）
+    print_rates_to_console: false       # 周期をログに出す（既定 false）
+    print_timings_to_console: false     # 処理時間をログに出す（既定 false）
+
+    # ---------- 複数の地図の組み合わせ（multi_mapper） ----------
+    multi_mapper:
+      connected_mask_component_size_threshold: 2000   # 小さい連結成分とみなす大きさ（既定 2000）
+      remove_small_connected_components: true         # 小さい連結成分を除く（既定 true）
+      experimental_use_ground_plane_estimation: false # 地面の平面を推定する（実験的。既定 false）
+      ground_points_candidates_min_z_m: -0.10000000149011612   # 地面の候補の高さの下限 [m]（既定 -0.1）
+      ground_points_candidates_max_z_m: 0.15000000596046448    # 同じく上限 [m]（既定 0.15）
+      num_ransac_iterations: 1000                     # 地面の平面の RANSAC の回数（既定 1000）
+      ransac_distance_threshold_m: 0.20000000298023224         # RANSAC のインライアの距離 [m]（既定 0.2）
+
+    # ---------- 静的な地図（static_mapper。mapping_type: static_tsdf で使う） ----------
+    static_mapper:
+      # 深度の前処理と積み上げ
+      do_depth_preprocessing: false                   # 既定 false
+      depth_preprocessing_num_dilations: 4            # 既定 4
+      projective_integrator_max_integration_distance_m: 7.0          # 深度画像を積み上げる距離の上限 [m]（既定 7.0）
+      lidar_projective_integrator_max_integration_distance_m: 10.0   # 点群を積み上げる距離の上限 [m]（既定 10.0）
+      projective_integrator_max_weight: 5.0           # TSDF の重みの上限（既定 5.0）
+      projective_integrator_truncation_distance_vox: 4.0             # 打ち切りの距離 [ボクセル]（既定 4.0）
+      projective_integrator_weighting_mode: kInverseSquareWeight     # 重みの付け方（既定 kInverseSquareWeight）
+      projective_tsdf_integrator_invalid_depth_decay_factor: -1.0    # 無効な深度の所の減衰（負なら減衰しない。既定 -1.0）
+      raycast_subsampling_factor: 4                   # 光線の間引き（既定 4）
+      # 占有
+      check_neighborhood: true                        # 既定 true
+      initialize_to_high_confidence_freespace: false  # 既定 false
+      occupancy_decay_to_free: false                  # 既定 false
+      free_region_occupancy_probability: 0.30000001192092896      # 既定 0.3
+      free_region_decay_probability: 0.550000011920929            # 既定 0.55
+      occupied_region_occupancy_probability: 0.699999988079071    # 既定 0.7
+      occupied_region_decay_probability: 0.4000000059604645       # 既定 0.4
+      occupied_region_half_width_m: 0.10000000149011612           # 既定 0.1
+      unobserved_region_occupancy_probability: 0.5                # 既定 0.5
+      max_tsdf_distance_for_occupancy_m: 0.15000000596046448      # 既定 0.15
+      max_unobserved_to_keep_consecutive_occupancy_ms: 200        # 既定 200
+      min_consecutive_occupancy_duration_for_reset_ms: 2000       # 既定 2000
+      min_duration_since_occupied_for_freespace_ms: 1000          # 既定 1000
+      # TSDF の減衰
+      tsdf_decay_factor: 0.949999988079071            # 既定 0.95
+      tsdf_decayed_free_distance_vox: 4.0             # 既定 4.0
+      tsdf_decayed_weight_threshold: 0.0010000000474974513        # 既定 0.001
+      tsdf_set_free_distance_on_decayed: false        # 既定 false
+      decay_integrator_deallocate_decayed_blocks: true            # 既定 true
+      # ESDF
+      esdf_integrator_max_distance_m: 2.0             # 既定 2.0
+      esdf_integrator_max_site_distance_vox: 1.0      # 既定 1.0
+      esdf_integrator_min_weight: 9.999999747378752e-05           # 既定 1e-4
+      esdf_slice_height: 1.0                          # 既定 1.0
+      esdf_slice_min_height: 0.0                      # 既定 0.0
+      esdf_slice_max_height: 1.0                      # 既定 1.0
+      slice_height_above_plane_m: 0.0                 # 既定 0.0
+      slice_height_thickness_m: 0.10000000149011612   # 既定 0.1
+      add_negative_truncation_band_sites: false       # 既定 false
+      unobserved_esdf_policy: kIgnore                 # 既定 kIgnore
+      # メッシュ
+      mesh_integrator_min_weight: 9.999999747378752e-05           # 既定 1e-4
+      mesh_integrator_weld_vertices: true             # 既定 true
+      # 作業範囲
+      workspace_bounds_type: kUnbounded               # 既定 kUnbounded
+      workspace_bounds_min_height_m: 0.0              # 既定 0.0
+      workspace_bounds_max_height_m: 1.0              # 既定 1.0
+      workspace_bounds_min_corner_x_m: 0.0            # 既定 0.0
+      workspace_bounds_min_corner_y_m: 2.0            # 既定 2.0
+      workspace_bounds_max_corner_x_m: 0.0            # 既定 0.0
+      workspace_bounds_max_corner_y_m: 2.0            # 既定 2.0
+
+    # ---------- 動的な地図（dynamic_mapper。mapping_type: dynamic で使う。今は使わない。既定は static_mapper と同じ） ----------
+    dynamic_mapper:
+      # 深度の前処理と積み上げ
+      do_depth_preprocessing: false                   # 既定 false
+      depth_preprocessing_num_dilations: 4            # 既定 4
+      projective_integrator_max_integration_distance_m: 7.0          # 深度画像を積み上げる距離の上限 [m]（既定 7.0）
+      lidar_projective_integrator_max_integration_distance_m: 10.0   # 点群を積み上げる距離の上限 [m]（既定 10.0）
+      projective_integrator_max_weight: 5.0           # TSDF の重みの上限（既定 5.0）
+      projective_integrator_truncation_distance_vox: 4.0             # 打ち切りの距離 [ボクセル]（既定 4.0）
+      projective_integrator_weighting_mode: kInverseSquareWeight     # 重みの付け方（既定 kInverseSquareWeight）
+      projective_tsdf_integrator_invalid_depth_decay_factor: -1.0    # 無効な深度の所の減衰（負なら減衰しない。既定 -1.0）
+      raycast_subsampling_factor: 4                   # 光線の間引き（既定 4）
+      # 占有
+      check_neighborhood: true                        # 既定 true
+      initialize_to_high_confidence_freespace: false  # 既定 false
+      occupancy_decay_to_free: false                  # 既定 false
+      free_region_occupancy_probability: 0.30000001192092896      # 既定 0.3
+      free_region_decay_probability: 0.550000011920929            # 既定 0.55
+      occupied_region_occupancy_probability: 0.699999988079071    # 既定 0.7
+      occupied_region_decay_probability: 0.4000000059604645       # 既定 0.4
+      occupied_region_half_width_m: 0.10000000149011612           # 既定 0.1
+      unobserved_region_occupancy_probability: 0.5                # 既定 0.5
+      max_tsdf_distance_for_occupancy_m: 0.15000000596046448      # 既定 0.15
+      max_unobserved_to_keep_consecutive_occupancy_ms: 200        # 既定 200
+      min_consecutive_occupancy_duration_for_reset_ms: 2000       # 既定 2000
+      min_duration_since_occupied_for_freespace_ms: 1000          # 既定 1000
+      # TSDF の減衰
+      tsdf_decay_factor: 0.949999988079071            # 既定 0.95
+      tsdf_decayed_free_distance_vox: 4.0             # 既定 4.0
+      tsdf_decayed_weight_threshold: 0.0010000000474974513        # 既定 0.001
+      tsdf_set_free_distance_on_decayed: false        # 既定 false
+      decay_integrator_deallocate_decayed_blocks: true            # 既定 true
+      # ESDF
+      esdf_integrator_max_distance_m: 2.0             # 既定 2.0
+      esdf_integrator_max_site_distance_vox: 1.0      # 既定 1.0
+      esdf_integrator_min_weight: 9.999999747378752e-05           # 既定 1e-4
+      esdf_slice_height: 1.0                          # 既定 1.0
+      esdf_slice_min_height: 0.0                      # 既定 0.0
+      esdf_slice_max_height: 1.0                      # 既定 1.0
+      slice_height_above_plane_m: 0.0                 # 既定 0.0
+      slice_height_thickness_m: 0.10000000149011612   # 既定 0.1
+      add_negative_truncation_band_sites: false       # 既定 false
+      unobserved_esdf_policy: kIgnore                 # 既定 kIgnore
+      # メッシュ
+      mesh_integrator_min_weight: 9.999999747378752e-05           # 既定 1e-4
+      mesh_integrator_weld_vertices: true             # 既定 true
+      # 作業範囲
+      workspace_bounds_type: kUnbounded               # 既定 kUnbounded
+      workspace_bounds_min_height_m: 0.0              # 既定 0.0
+      workspace_bounds_max_height_m: 1.0              # 既定 1.0
+      workspace_bounds_min_corner_x_m: 0.0            # 既定 0.0
+      workspace_bounds_min_corner_y_m: 2.0            # 既定 2.0
+      workspace_bounds_max_corner_x_m: 0.0            # 既定 0.0
+      workspace_bounds_max_corner_y_m: 2.0            # 既定 2.0
+
+
+rviz2:
+  ros__parameters:
+    use_sim_time: true                  # Gazebo の /clock に従う（既定 false）
