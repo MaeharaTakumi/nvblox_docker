@@ -20,7 +20,9 @@ nvblox_node:
     use_color: false                    # カラー画像を使う（既定 true）
     use_segmentation: false             # 人などの切り出しを使う（既定 false）
     num_cameras: 1                      # カメラの数（use_depth・use_color のとき。既定 1）
-    input_qos: SYSTEM_DEFAULT           # 入力の購読の QoS（SYSTEM_DEFAULT は reliable）。/velodyne_points の配信は RELIABLE（段階 2 で確認）（既定 SYSTEM_DEFAULT）
+    # 入力の購読の QoS。/velodyne_points の配信（Gazebo）は RELIABLE・VOLATILE で、この値の購読は ros2 topic info -v で BEST_EFFORT・VOLATILE
+    # （RELIABLE の配信を BEST_EFFORT で受けるのは互換。dev_log.md の 3）（既定 SYSTEM_DEFAULT）
+    input_qos: SYSTEM_DEFAULT
     input_qos_depth: 0                  # 入力の購読の履歴の深さ（0 なら QoS の既定。既定 0）
     maximum_input_queue_length: 10      # 処理を待つ入力の数の上限（溢れたら古いものを捨てる。既定 10）
 
@@ -34,8 +36,9 @@ nvblox_node:
     use_non_equal_vertical_fov_lidar_params: false  # 上下の視野が非対称の LiDAR（下の 2 つを使う。既定 false）
     max_angle_above_zero_elevation_rad: 0.2617993950843811  # 非対称のときの上側の角度（既定 0.2618）
     min_angle_below_zero_elevation_rad: 0.3490658402442932  # 非対称のときの下側の角度（既定 0.3491）
-    # 点ごとの時刻で歪みを補正する。Gazebo の点群の time は全点 0.0（header の時刻からの相対）なので、実質補正しない
-    use_lidar_motion_compensation: true # 既定 true
+    # 点ごとの時刻で歪みを補正する。Gazebo の点群の time は全点 0.0 で、true だとスキャンの長さが 0 になり
+    # 「Check failed: maybe_scan_duration_ms.value() > Time(0)」で nvblox_node が落ちる（dev_log.md の 3）ので false
+    use_lidar_motion_compensation: false  # 既定 true
     pointcloud2_timestamps_are_relative: true   # 点ごとの時刻を header からの相対とみなす（既定 true）
 
     # ---------- 地図 ----------

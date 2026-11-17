@@ -39,3 +39,38 @@
     Gazebo の点群の `time` は全点 0.0 なので、補正は実質かからない（既定のまま）。
   - 起動のたびに `Requested weighting function: "kInverseSquareWeight" not recognized. Defaulting to: kInverseSquareWeight`・
     `workspace bounds type: "kUnbounded" not recognized` の WARN が出る。yaml を渡さず既定値で起動しても同じなので、nvblox 側の表示の癖（動作は既定どおり）。
+
+### 3. 段階 1 の確認（GPU・描画・Humble との通信・DDS）と、起動して分かったこと
+
+- 目的：コンテナで GPU と描画が使えること、Humble の Gazebo・`test` と Jazzy の nvblox が通信できること、DDS が 127.0.0.1 だけであることを確かめる。
+- やったこと：Gazebo（`connection_wheelchair.launch.py`）→ `test` の推定（`env:=gazebo rviz:=false map_path:=/root/ros2_ws/map/SC10_4_0.05.pcd`）を起動し、
+  nvblox のコンテナから受信した。nvblox は `ros2 launch /root/nvblox/config/nvblox.launch.py env:=gazebo rviz:=true`。
+- 結果：
+  - `nvidia-smi`：`NVIDIA GeForce RTX 5080, 595.99.02`。`glxinfo -B`：renderer `NVIDIA GeForce RTX 5080/PCIe/SSE2`（OpenGL 4.6.0 NVIDIA 595.99.02、direct rendering）。
+  - **Humble ↔ Jazzy**：`/velodyne_points`・`/tf`・`/tf_static`（transient_local）・`/clock` が見え、どれも受信できた。`tf2_echo map velodyne` も引ける。
+    点群は 7040 点（440 × 16）、`height` 1（organize されていない）、frame `velodyne`。
+    `ros2 topic info -v` で Humble 側のノードは `_NODE_NAME_UNKNOWN_`・型のハッシュ `INVALID` と出る（Humble は Jazzy の型のハッシュを持たない。通信には影響しない）。
+  - **QoS**：`/velodyne_points` の配信は RELIABLE・VOLATILE。`input_qos: SYSTEM_DEFAULT` の nvblox_node の購読は BEST_EFFORT・VOLATILE（互換）。`input_qos` は既定のまま。
+  - **DDS は 127.0.0.1 の UDP だけ**：`nvblox_node`・`rviz2` のソケット（`/proc/<pid>/fd` の inode を `/proc/<pid>/net/{udp,udp6,tcp,tcp6}` と突き合わせた）は
+    各 4 つで全部 `127.0.0.1`、TCP なし。ホストの `/proc/net/igmp` で 239.255.0.1 にはどのインタフェース（lo・enp129s0・docker0）も参加していない。
+  - **nvblox_node が起動直後に落ちた**：`Check failed: maybe_scan_duration_ms.value() > Time(0)`（`pointcloud_to_depth_conversion_impl.cuh:176`）。
+    Gazebo の点群の点ごとの `time` が全部 0.0 で、歪みの補正（`use_lidar_motion_compensation`、既定 true）がスキャンの長さを 0 と見るため。
+    → `use_lidar_motion_compensation: false`。以後は落ちない。
+  - **メッシュが RViz に出ない**（下図。点群と地図だけ）：`/nvblox_node/mesh` は 4.6 Hz で届くが、ブロックの頂点が全部空。
+    診断の表示（`print_rates`・`print_timings` など）で、点群は 10.3 Hz で積み上がり、深度画像（`/nvblox_node/lidar_image`）も 7024 / 7040 画素が有効だった。
+    原因は**表示の除外**：`layer_visualization_exclusion_height_m`（既定 2.0。「z がこれより上のボクセルは表示しない」）で、Gazebo の地図は床が map の z ≈ 12.3 m なので全部除かれる。
+    一時的に値を変えて起動し、10〜12 s 受けたメッシュで比べた（止まったまま、ロボットは (80.1, 7.0)）：
+
+    | `layer_visualization_exclusion_height_m` / `_radius_m` | 頂点のあるブロック | ロボットからの最大の水平距離 |
+    |---|---|---|
+    | 2.0 / 5.0（既定） | 0 | — |
+    | 100 / 5.0 | 229 | 5.0 m |
+    | 100 / 100 | 347 | 9.2 m |
+    | -1 / -1 | 349 | 9.2 m |
+
+    半径（`layer_visualization_exclusion_radius_m`、既定 5.0。「ロボットからこれより遠いボクセルは表示しない」）も表示を 5 m に限る（9.2 m は点群を積み上げる上限 10 m による）。
+    負の値でどちらも無効になる。どうするかはユーザーに確認する。
+  - 既定のままの `decay_tsdf_rate_hz` 5 Hz で「Last view not set for sensor type. Decaying all voxels」の INFO が 0.2 s ごとに出る（static_tsdf でも TSDF を減衰させている。
+    影響は段階 2 の走行で見る）。
+
+![段階 1：メッシュが出ない（既定の表示の除外）](dev_log_images/stage1_rviz_no_mesh.png)
