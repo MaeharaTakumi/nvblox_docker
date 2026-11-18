@@ -169,3 +169,16 @@ RViz の画面全体（走行後 5 s）と、約 2 分後（メッシュが消�
   - 全体の集計は `NVBlox Timings` の表（処理ごとの回数・合計・平均・標準偏差・最小・最大）で出る。
 
 ![ボクセル（TSDF の層）の表示（走行後 5 s）](dev_log_images/stage2_tsdf_voxels.png)
+
+### 8. ボクセルの表示と計算時間の出力を常に使う設定に加える（ユーザー指示）
+
+- 目的：項目 7 で確かめたボクセルの表示と計算時間の出力を、`nvblox` の標準の起動で使えるようにする。
+- やったこと：
+  - `config/rviz/nvblox.rviz` に `NvbloxTsdfVoxels`（`nvblox_rviz_plugin/NvbloxVoxelBlockLayer`、`/nvblox_node/tsdf_layer`、Reliable）を足した。
+    メッシュ（`NvbloxMesh`）と両方を有効にしている。どちらも更新されたブロックだけが届くので、表示を切ると購読が止まり、その間の分は入れ直しても出ない（コメントに書いた）。
+    プラグインに透明度の項目は無い（項目は Cut Ceiling・Ceiling Height）。
+  - `config/param/gazebo/params.yaml` の `print_timings_to_console` を false → **true**。`print_statistics_on_console_period_ms`（10000 ms）ごとに処理時間の表がログに出る。
+    起動からの集計は `~/save_timings` でファイルにも書ける（コメントに書いた）。
+- 結果：`nvblox`（launch）で起動し直し、`print_timings_to_console` が True、`~/tsdf_layer`・`~/mesh` の購読者が 1 ずつ（RViz）、
+  ログに処理時間の表が出ることを確かめた。WARN は項目 2 と同じ 2 種だけ。RViz の 2 つの表示は正常に読み込まれた（推定を止めていて TF が無いので、走行での表示は確かめていない。
+  ボクセルの表示は項目 7、メッシュは項目 6 で確かめた）。

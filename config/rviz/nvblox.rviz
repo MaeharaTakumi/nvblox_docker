@@ -89,6 +89,18 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    # nvblox の TSDF のボクセル（nvblox_rviz_plugin。nvblox_node の ~/tsdf_layer）
+    # 更新されたブロックだけが届くので、表示を切ると購読が止まり、その間に更新された所は入れ直しても出ない（メッシュも同じ）
+    - Class: nvblox_rviz_plugin/NvbloxVoxelBlockLayer
+      Enabled: true
+      Name: NvbloxTsdfVoxels
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /nvblox_node/tsdf_layer
+      Value: true
     # nvblox のメッシュ（nvblox_rviz_plugin。nvblox_node の ~/mesh）
     - Class: nvblox_rviz_plugin/NvbloxMesh
       Enabled: true

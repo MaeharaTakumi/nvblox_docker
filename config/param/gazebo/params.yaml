@@ -97,7 +97,9 @@ nvblox_node:
     print_delays_to_console: false      # 遅れをログに出す（既定 false）
     print_queue_drops_to_console: false # 入力の取りこぼしをログに出す（既定 false）
     print_rates_to_console: false       # 周期をログに出す（既定 false）
-    print_timings_to_console: false     # 処理時間をログに出す（既定 false）
+    # 処理時間を print_statistics_on_console_period_ms ごとにログに出す（既定 false）。
+    # 起動からの集計はサービス ~/save_timings（nvblox_msgs/srv/FilePath）でファイルにも書ける
+    print_timings_to_console: true
 
     # ---------- 複数の地図の組み合わせ（multi_mapper） ----------
     multi_mapper:
