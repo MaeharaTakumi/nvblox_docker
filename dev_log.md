@@ -138,3 +138,34 @@ RViz の画面全体（走行後 5 s）と、約 2 分後（メッシュが消�
 ![保存したメッシュを上から見た図（色は高さ。▲出発、■到着）](dev_log_images/stage2_nodecay_mesh_top.png)
 
 ![RViz（左から走る前・走行中・走行後 5 s・走行後 2 分。視点は途中で動かしている）](dev_log_images/stage2_nodecay_rviz.png)
+
+### 7. ボクセルの表示と計算時間の計測を試す（ユーザーの質問）
+
+- 目的：RViz で地図をボクセルとして表示できるか、nvblox の計算時間を測れるかを確かめる。
+- やったこと：
+  - nvblox_node は TSDF のボクセルを `~/tsdf_layer`（`nvblox_msgs/VoxelBlockLayer`）と `~/tsdf_layer_marker`（Marker の CUBE_LIST、一辺 0.049 m）で配信している。
+    RViz のプラグインには `nvblox_rviz_plugin/NvbloxVoxelBlockLayer` がある（`NvbloxMesh` と同じく、届いたブロックを積み上げて持つ）。
+  - `nvblox.rviz` の写しに `NvbloxVoxelBlockLayer`（`/nvblox_node/tsdf_layer`、Reliable）を足し、メッシュの表示を切った設定を一時ファイルで作った（`config/` は変えていない）。
+  - 計算時間は nvblox_node の `print_timings_to_console:=true`（`print_statistics_on_console_period_ms` ごとにログに出す）と、
+    サービス `~/save_timings`（`nvblox_msgs/srv/FilePath`。起動からの集計をテキストに書く）で取れる。
+  - Gazebo を起動し直して `drive gazebo slalom check/nvblox_slalom_voxel` を項目 6 と同じ順で走らせ、nvblox_node を上の 2 つを有効にして `ros2 run` で起動した。
+    走行後に `~/save_timings` を呼んだ。
+- 結果：
+  - **ボクセルとして表示できる**（下図、走行後 5 s）。床と壁が立方体で積み上がる。
+    層は更新されたブロックだけを送るので、走行の途中から購読するとそれまでの分は届かない（メッシュと同じ）。
+  - **計算時間**（nvblox_node の起動から走行後まで約 42 s。LiDAR は 10 Hz で 391 回積み上げた。単位 ms、平均 ± 標準偏差［最大］）：
+
+    | 処理 | 回数 | 時間 [ms] |
+    |---|---|---|
+    | 点群 1 回の処理（`ros/lidar`：変換・TSDF への積み上げ） | 416 | 1.14 ± 0.42［17.9］ |
+    | 　うち TSDF への積み上げ（`tsdf/integrate`） | 391 | 0.83 ± 0.37［17.0］ |
+    | ESDF の更新（`ros/esdf`、5 Hz） | 196 | 0.65 ± 0.29［4.5］ |
+    | 層の配信（`ros/publish_layers`、10 Hz） | 373 | 1.21 ± 1.13［8.8］ |
+    | 1 周期の処理全体（`ros/tick`） | 4216 | 0.31 ± 0.49［19.5］ |
+
+    点群は 100 ms ごとに来るので、点群 1 回の処理（平均 1.1 ms）は十分間に合う。最大 17.9 ms は 1 回目（GPU のメモリの確保など）と思われる。
+  - **メッシュの計算時間は出なかった**：メッシュの表示を切って購読者がいないと、nvblox はメッシュを作らない（集計に `mesh` の項目が無い）。
+    メッシュの時間を測るにはメッシュも購読して走らせる必要がある。
+  - 全体の集計は `NVBlox Timings` の表（処理ごとの回数・合計・平均・標準偏差・最小・最大）で出る。
+
+![ボクセル（TSDF の層）の表示（走行後 5 s）](dev_log_images/stage2_tsdf_voxels.png)
