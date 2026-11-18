@@ -111,3 +111,30 @@ RViz の画面全体（走行後 5 s）と、約 2 分後（メッシュが消�
 
 ![RViz の画面（走行後 5 s）](dev_log_images/stage2_rviz_window.png)
 ![RViz の画面（走行後 約 2 分）](dev_log_images/stage2_after_stop.png)
+
+## 2026-11-18
+
+### 6. 段階 2：減衰を止めて走り直し、メッシュを保存する（ユーザー指示）
+
+- 目的：TSDF の減衰（項目 5）を止め、離れた所が走行後も残ることを確かめる。できたメッシュをファイルに保存する。
+- やったこと：
+  - `param/gazebo/params.yaml` の `decay_tsdf_rate_hz` を 5.0 → **0.0**（減衰しない）。`static_mapper.tsdf_decay_factor: 1.0` は nvblox_node が落ちるので使わない（項目 5）。
+  - Gazebo を起動し直して車椅子を初期位置に戻し、項目 5 と同じ順で `drive gazebo slalom check/nvblox_slalom_nodecay map_path:=/root/ros2_ws/map/SC10_4_0.05.pcd`。
+  - 走行後に nvblox_node のサービス `~/save_ply`（`nvblox_msgs/srv/FilePath`）でメッシュを PLY（ascii）に保存した：
+    `ros2 service call /nvblox_node/save_ply nvblox_msgs/srv/FilePath "{file_path: '/tmp/<名前>.ply'}"`。走行後 5 s と 2 分後に 1 回ずつ。
+- 結果：
+  - 走行：forward 1.09 s・1.00 m、slalom 12.47 s・7.52 m。録画は `check/nvblox_slalom_nodecay`（43.9 s、72.7 MiB）。
+  - **減衰は止まった**：「Decaying all voxels」は 0 回。nvblox_node の WARN は起動時の 2 種（項目 2 と同じ、無害）だけで、TF 待ち・取りこぼしは無し。
+  - **離れた所も残る**：保存したメッシュは走行後 5 s・2 分後とも **頂点 158,789・面 225,714**（数は同じ）。範囲は x 64.1〜84.1 m・y 2.4〜10.6 m・z 12.3〜15.7 m。
+    到着位置 (72.0, 6.5) から最大 12.7 m、10 m より遠い頂点が 21.9 %。出発位置の後ろの壁（x ≈ 84、到着から約 12 m）も残っている（下の図）。
+    RViz でも 2 分後にメッシュが残っている（下の帯の右端）。
+  - **nvblox_node の GPU メモリ**：走り出す時点 1270 MiB → 最大 1498 MiB → 走行の終わり 1434 MiB。2 分待って `save_ply` を 2 回呼んだ後は 1882 MiB。
+  - メッシュのファイル：`maps/nvblox_slalom_nodecay.ply`（14.9 MB。`.gitignore` の `*.ply` で git には入れない）。
+    コンテナには `config/` しか割り当てていないので、`/tmp` に保存して `docker cp` でホストに移した。
+  - 項目 5 の訂正：`~/mesh` を新しく購読しても、nvblox は更新されたブロックしか送らないので、地図があっても 0 ブロックになる（今回、メッシュが残っているのに 0 だった）。
+    項目 5 で地図が消えた根拠は、RViz から消えたことと減衰のログの方になる。
+  - `drive` のログの「sequence size exceeds remaining buffer」は今回も 2 回出た（原因は調べていない）。
+
+![保存したメッシュを上から見た図（色は高さ。▲出発、■到着）](dev_log_images/stage2_nodecay_mesh_top.png)
+
+![RViz（左から走る前・走行中・走行後 5 s・走行後 2 分。視点は途中で動かしている）](dev_log_images/stage2_nodecay_rviz.png)

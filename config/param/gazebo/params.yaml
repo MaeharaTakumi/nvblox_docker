@@ -57,7 +57,9 @@ nvblox_node:
     integrate_lidar_rate_hz: 40.0       # 点群を積み上げる周期の上限 [Hz]（既定 40.0）
     integrate_depth_rate_hz: 40.0       # 深度画像（既定 40.0）
     integrate_color_rate_hz: 5.0        # カラー画像（既定 5.0）
-    decay_tsdf_rate_hz: 5.0             # TSDF の減衰（static_tsdf では使わない。既定 5.0）
+    # TSDF の減衰（既定 5.0）。static_tsdf でも動き、LiDAR では全ボクセルが減って見えなくなった所が約 30 秒で消えるので 0 で止める
+    # （static_mapper.tsdf_decay_factor を 1.0 にすると nvblox_node が「value < 1.0」で落ちるので使えない）
+    decay_tsdf_rate_hz: 0.0
     decay_dynamic_occupancy_rate_hz: 10.0       # 動的な占有の減衰（既定 10.0）
     update_mesh_rate_hz: 5.0            # メッシュの更新 [Hz]（既定 5.0）
     update_esdf_rate_hz: 5.0            # ESDF の更新 [Hz]（既定 5.0）
